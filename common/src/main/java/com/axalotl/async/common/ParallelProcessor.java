@@ -1,7 +1,6 @@
 package com.axalotl.async.common;
 
 import com.axalotl.async.common.config.AsyncConfig;
-import com.axalotl.async.common.parallelised.utils.PortalCreationCache;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.server.MinecraftServer;
@@ -21,6 +20,7 @@ import java.lang.ref.WeakReference;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 public class ParallelProcessor {
     public static final Logger LOGGER = LogManager.getLogger(ParallelProcessor.class);
@@ -33,6 +33,7 @@ public class ParallelProcessor {
     private static final AtomicInteger threadPoolID = new AtomicInteger();
     public static ExecutorService tickPool;
     private static final Set<UUID> blacklistedEntity = ConcurrentHashMap.newKeySet();
+    private static final Queue<Runnable> mainThreadTasks = new ConcurrentLinkedQueue<>();
     private static final Map<String, Set<WeakReference<Thread>>> mcThreadTracker = new ConcurrentHashMap<>();
     public static final Set<Class<?>> BLOCKED_ENTITIES = Set.of(
             FallingBlockEntity.class,
@@ -119,7 +120,7 @@ public class ParallelProcessor {
         do {
             allDone = futures.stream().allMatch(Future::isDone);
             if (!allDone) {
-                boolean pumped = false;
+                boolean pumped = runMainThreadTasks();
                 for (ServerLevel lvl : server.getAllLevels()) {
                     pumped |= lvl.getChunkSource().pollTask();
                 }
@@ -136,6 +137,40 @@ public class ParallelProcessor {
                 LOGGER.error("Error in async entity tick", e);
             }
         }
+    }
+
+    /*
+     * Runs a task on the main thread and blocks the calling worker until it completes. Tasks are
+     * drained only by the top-level pump of callEntityTickBatch, never from a nested chunk-load
+     * wait, so a queued task can never interleave with main-thread code that is already running.
+     */
+    public static <T> T callOnMainThread(Supplier<T> task) {
+        CompletableFuture<T> future = new CompletableFuture<>();
+        mainThreadTasks.add(() -> {
+            try {
+                future.complete(task.get());
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
+            }
+        });
+        try {
+            return future.join();
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException runtime) throw runtime;
+            if (cause instanceof Error error) throw error;
+            throw e;
+        }
+    }
+
+    private static boolean runMainThreadTasks() {
+        boolean ran = false;
+        Runnable task;
+        while ((task = mainThreadTasks.poll()) != null) {
+            task.run();
+            ran = true;
+        }
+        return ran;
     }
 
     public static boolean shouldTickSynchronously(Entity entity) {
@@ -187,7 +222,6 @@ public class ParallelProcessor {
         }
         AsyncConfig.clearCaches();
         blacklistedEntity.clear();
-        PortalCreationCache.clear();
     }
 
     private static void logEntityError(Entity entity, Throwable e) {
