@@ -14,13 +14,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(InteractWithDoor.class)
 public class InteractWithDoorMixin {
 
-    @Inject(
-            method = "isMobComingThroughDoor",
-            at = @At("HEAD"),
-            cancellable = true
-    )
-    private static void injectIsMobComingThroughDoor(Brain<?> brain, BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
-        Path path = brain.getMemory(MemoryModuleType.PATH).orElse(null);
+    @Inject(method = "isMobComingThroughDoor", at = @At("HEAD"), cancellable = true)
+    private static void injectIsMobComingThroughDoor(Brain<?> otherBrain, BlockPos doorPos, CallbackInfoReturnable<Boolean> cir) {
+        Path path = otherBrain.getMemory(MemoryModuleType.PATH).orElse(null);
         if (path == null || path.isDone()) {
             cir.setReturnValue(false);
             return;
@@ -33,6 +29,6 @@ public class InteractWithDoorMixin {
         }
 
         Node nextNode = path.getNextNode();
-        cir.setReturnValue(pos.equals(prevNode.asBlockPos()) || pos.equals(nextNode.asBlockPos()));
+        cir.setReturnValue(doorPos.equals(prevNode.asBlockPos()) || doorPos.equals(nextNode.asBlockPos()));
     }
 }

@@ -40,6 +40,7 @@ public class AsyncConfig {
                 LOGGER.warn("Configuration not found. Creating defaults...");
                 setDefaultValues();
                 saveConfig();
+                com.axalotl.async.common.config.AsyncConfig.onConfigLoaded();
             } else {
                 CONFIG.load();
                 loadConfigValues();
@@ -50,15 +51,18 @@ public class AsyncConfig {
             LOGGER.error("Error loading configuration. Resetting to defaults.", t);
             setDefaultValues();
             saveConfig();
+            com.axalotl.async.common.config.AsyncConfig.onConfigLoaded();
         }
     }
 
     public static void saveConfig() {
-        setWithComment("disabled", disabled, "Enables parallel processing of entities.");
-        setWithComment("maxThreads", maxThreads, "Maximum worker threads. -1 = auto.");
+        setWithComment("disabled", disabled, "Disables the mod. All entities are ticked on the main thread.");
+        setWithComment("maxThreads", maxThreads,
+                "Worker threads for parallel ticking. -1 = auto.");
         setWithComment("synchronizedEntities", new ArrayList<>(synchronizedEntities),
                 """
-                        List of entity IDs or namespaces (*):
+                        Entities ticked on the main thread instead of in parallel.
+                        Entity IDs or namespaces (*):
                           - 'minecraft:zombie' = specific entity
                           - 'minecraft:*'      = all entities in namespace""");
         setWithComment("enableAsyncSpawn", enableAsyncSpawn,
@@ -89,14 +93,15 @@ public class AsyncConfig {
         }
 
         restoreComments();
-        CONFIG.save();
     }
 
     private static void restoreComments() {
-        setCommentIfExists("disabled", "Enables parallel processing of entities.");
-        setCommentIfExists("maxThreads", "Maximum worker threads. -1 = auto.");
+        setCommentIfExists("disabled", "Disables the mod. All entities are ticked on the main thread.");
+        setCommentIfExists("maxThreads",
+                "Worker threads for parallel ticking. -1 = auto: scaled down from the logical thread count, because hyperthreads are not whole cores and the main thread, GC and other mods need room too. Capped at the core count.");
         setCommentIfExists("synchronizedEntities", """
-                List of entity IDs or namespaces (*):
+                Entities ticked on the main thread instead of in parallel.
+                Entity IDs or namespaces (*):
                   - 'minecraft:zombie' = specific entity
                   - 'minecraft:*'      = all entities in namespace""");
         setCommentIfExists("enableAsyncSpawn", "Enables async entity spawning. WARNING: incompatible with Carpet's lagFreeSpawning.");
@@ -128,7 +133,7 @@ public class AsyncConfig {
     private static void setDefaultValues() {
         disabled = false;
         maxThreads = -1;
-        enableAsyncSpawn = true;
+        enableAsyncSpawn = false;
         enableAsyncRandomTicks = false;
         synchronizedEntities = getDefaultSynchronizedEntities();
     }

@@ -1,5 +1,6 @@
-package com.axalotl.async.common.parallelised.fastutil;
+package com.axalotl.async.api.fastutil;
 
+import it.unimi.dsi.fastutil.longs.Long2ObjectFunction;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.objects.ObjectCollection;
@@ -20,14 +21,13 @@ import java.util.function.LongFunction;
  */
 public final class Long2ObjectConcurrentHashMap<V> implements Long2ObjectMap<V> {
 
-    private final ConcurrentHashMap<Long, V> backing;
+    private final ConcurrentHashMap<Long, V> backing = new ConcurrentHashMap<>();
     private V defaultReturnValue;
 
     /**
-     * Creates a new empty concurrent map with default initial capacity
+     * Creates an empty thread-safe Long2ObjectMap backed by ConcurrentHashMap.
      */
     public Long2ObjectConcurrentHashMap() {
-        this.backing = new ConcurrentHashMap<>();
     }
 
     @Override
@@ -108,6 +108,12 @@ public final class Long2ObjectConcurrentHashMap<V> implements Long2ObjectMap<V> 
     public V computeIfAbsent(long key, @NotNull LongFunction<? extends V> mappingFunction) {
         Objects.requireNonNull(mappingFunction);
         return backing.computeIfAbsent(key, mappingFunction::apply);
+    }
+
+    @Override
+    public V computeIfAbsent(long key, @NotNull Long2ObjectFunction<? extends V> mappingFunction) {
+        Objects.requireNonNull(mappingFunction);
+        return backing.computeIfAbsent(key, k -> mappingFunction.get((long) k));
     }
 
     @Override

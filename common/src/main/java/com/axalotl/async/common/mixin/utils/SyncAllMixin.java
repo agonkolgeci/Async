@@ -5,8 +5,6 @@ import net.minecraft.util.ClassInstanceMultiMap;
 import net.minecraft.util.profiling.ActiveProfiler;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.monster.warden.AngerManagement;
-import net.minecraft.world.level.border.WorldBorder;
-import net.minecraft.world.level.entity.EntitySection;
 import net.minecraft.world.level.gameevent.EuclideanGameEventListenerRegistry;
 import net.minecraft.world.level.lighting.DynamicGraphMinFixedPoint;
 import net.minecraft.world.level.pathfinder.BinaryHeap;
@@ -21,8 +19,6 @@ import org.spongepowered.asm.mixin.Mixin;
         EuclideanGameEventListenerRegistry.class,
         SimpleCriterionTrigger.class,
         AngerManagement.class,
-        WorldBorder.class,
-        EntitySection.class,
         ClassInstanceMultiMap.class,
         ActiveProfiler.class,
 })

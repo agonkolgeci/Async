@@ -1,4 +1,4 @@
-package com.axalotl.async.common.parallelised.fastutil;
+package com.axalotl.async.api.fastutil;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.IntSet;
@@ -16,14 +16,31 @@ import java.util.function.BiFunction;
  * Provides concurrent access and high performance for integer-keyed maps.
  *
  * @param <V> the type of values maintained by this map
+ * A type-specific {@link Map}; provides some additional methods that use polymorphism to avoid
+ * (un)boxing, and handling of a default return value.
+ *
+ * <p>
+ * Besides extending the corresponding type-specific {@linkplain it.unimi.dsi.fastutil.Function
+ * function}, this interface strengthens {@link Map#entrySet()}, {@link #keySet()} and
+ * {@link #values()}. Moreover, a number of methods, such as {@link #size()},
+ * {@link #defaultReturnValue()}, etc., are un-defaulted as their function default do not make sense
+ * for a map. Maps returning entry sets of type {@link FastEntrySet} support also fast iteration.
+ *
+ * <p>
+ * A submap or subset may or may not have an independent default return value (which however must be
+ * initialized to the default return value of the originator).
+ *
+ * @see Map
  */
 public final class Int2ObjectConcurrentHashMap<V> implements Int2ObjectMap<V> {
 
-    private final ConcurrentHashMap<Integer, V> backing;
+    private final ConcurrentHashMap<Integer, V> backing = new ConcurrentHashMap<>(16, 0.9f, 1);
     private V defaultReturnValue;
 
+    /**
+     * Creates an empty map.
+     */
     public Int2ObjectConcurrentHashMap() {
-        this.backing = new ConcurrentHashMap<>(16, 0.9f, 1);
     }
 
     @Override
@@ -103,8 +120,8 @@ public final class Int2ObjectConcurrentHashMap<V> implements Int2ObjectMap<V> {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof Int2ObjectMap<?> that)) return false;
-        return size() == that.size() && int2ObjectEntrySet().containsAll(that.int2ObjectEntrySet());
+        if (!(o instanceof Map<?, ?>)) return false;
+        return backing.equals(o);
     }
 
     @Override

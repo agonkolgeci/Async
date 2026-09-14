@@ -7,32 +7,28 @@ import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.chunk.LevelChunk;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Unique;
 
 @Mixin(value = ChunkHolder.class, priority = 1500)
 public class ChunkHolderMixin {
 
-    @Unique
-    private static final Object async$lock = new Object();
-
     @WrapMethod(method = "broadcastChanges")
     private void wrapBroadcastChanges(LevelChunk chunk, Operation<Void> original) {
-        synchronized (async$lock) {
+        synchronized (this) {
             original.call(chunk);
         }
     }
 
     @WrapMethod(method = "blockChanged")
     private boolean wrapBlockChanged(BlockPos pos, Operation<Boolean> original) {
-        synchronized (async$lock) {
+        synchronized (this) {
             return original.call(pos);
         }
     }
 
     @WrapMethod(method = "sectionLightChanged")
-    private boolean wrapSectionLightChanged(LightLayer lightLayer, int y, Operation<Boolean> original) {
-        synchronized (async$lock) {
-            return original.call(lightLayer, y);
+    private boolean wrapSectionLightChanged(LightLayer layer, int chunkY, Operation<Boolean> original) {
+        synchronized (this) {
+            return original.call(layer, chunkY);
         }
     }
 }

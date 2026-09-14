@@ -1,7 +1,7 @@
 package com.axalotl.async.common.mixin.world;
 
-import com.axalotl.async.common.parallelised.fastutil.ConcurrentLongLinkedOpenHashSet;
-import com.axalotl.async.common.parallelised.fastutil.Long2ObjectConcurrentHashMap;
+import com.axalotl.async.api.fastutil.ConcurrentLongLinkedOpenHashSet;
+import com.axalotl.async.api.fastutil.Long2ObjectConcurrentHashMap;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -28,7 +28,7 @@ public abstract class SectionStorageMixin<R, P> implements AutoCloseable {
     @Shadow final private LongSet loadedChunks = new ConcurrentLongLinkedOpenHashSet();
 
     @WrapMethod(method = "unpackChunk(Lnet/minecraft/world/level/ChunkPos;)V")
-    private synchronized void release(ChunkPos pos, Operation<Void> original) {
-        original.call(pos);
+    private synchronized void release(ChunkPos chunkPos, Operation<Void> original) {
+        original.call(chunkPos);
     }
 }

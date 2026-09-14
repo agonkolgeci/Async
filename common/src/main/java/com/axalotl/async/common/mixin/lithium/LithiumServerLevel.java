@@ -1,5 +1,6 @@
 package com.axalotl.async.common.mixin.lithium;
 
+import com.axalotl.async.api.utils.ConcurrentCollections;
 import com.llamalad7.mixinextras.sugar.Local;
 import net.caffeinemc.mods.lithium.common.entity.NavigatingEntity;
 import net.caffeinemc.mods.lithium.common.world.ServerWorldExtended;
@@ -21,20 +22,17 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Mixin(value = ServerLevel.class, priority = 1500)
 public abstract class LithiumServerLevel extends Level implements WorldGenLevel, ServerWorldExtended {
     @Unique
-    private final Set<PathNavigation> async$activeNavigationsOver = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final Set<PathNavigation> activeNavigationsOver = ConcurrentCollections.newHashSet();
 
     protected LithiumServerLevel(WritableLevelData levelData, ResourceKey<Level> dimension, RegistryAccess registryAccess, Holder<DimensionType> dimensionTypeRegistration, boolean isClientSide, boolean isDebug, long biomeZoomSeed, int maxChainedNeighborUpdates) {
         super(levelData, dimension, registryAccess, dimensionTypeRegistration, isClientSide, isDebug, biomeZoomSeed, maxChainedNeighborUpdates);
     }
-
 
     @Inject(
             method = "sendBlockUpdated",
@@ -43,21 +41,21 @@ public abstract class LithiumServerLevel extends Level implements WorldGenLevel,
                     target = "Ljava/util/Set;iterator()Ljava/util/Iterator;"
             )
     )
-    private void updateActiveListeners(BlockPos pos, BlockState oldState, BlockState newState, int arg3, CallbackInfo ci, @Local List<PathNavigation> list) {
-        for (PathNavigation nav : async$activeNavigationsOver) {
+    private void updateActiveListeners(BlockPos pos, BlockState old, BlockState current, int updateFlags, CallbackInfo ci, @Local(name = "navigationsToUpdate") List<PathNavigation> navigationsToUpdate) {
+        for (PathNavigation nav : activeNavigationsOver) {
             if (nav.shouldRecomputePath(pos)) {
-                list.add(nav);
+                navigationsToUpdate.add(nav);
             }
         }
     }
 
     @Override
     public void lithium$setNavigationActive(Mob mobEntity) {
-        async$activeNavigationsOver.add(((NavigatingEntity) mobEntity).lithium$getRegisteredNavigation());
+        activeNavigationsOver.add(((NavigatingEntity) mobEntity).lithium$getRegisteredNavigation());
     }
 
     @Override
     public void lithium$setNavigationInactive(Mob mobEntity) {
-        async$activeNavigationsOver.remove(((NavigatingEntity) mobEntity).lithium$getRegisteredNavigation());
+        activeNavigationsOver.remove(((NavigatingEntity) mobEntity).lithium$getRegisteredNavigation());
     }
 }

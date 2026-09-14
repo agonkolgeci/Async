@@ -1,8 +1,8 @@
 package com.axalotl.async.common.mixin.world;
 
+import com.axalotl.async.api.utils.ConcurrentCollections;
 import com.axalotl.async.common.ParallelProcessor;
 import com.axalotl.async.common.config.AsyncConfig;
-import com.axalotl.async.common.parallelised.ConcurrentCollections;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
@@ -42,11 +42,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -59,7 +56,7 @@ public abstract class ServerLevelMixin extends Level implements WorldGenLevel {
     public EntityTickList entityTickList;
 
     @Unique
-    ConcurrentLinkedQueue<BlockEventData> async$syncedBlockEventQueue;
+    ConcurrentLinkedQueue<BlockEventData> syncedBlockEventQueue;
 
     @Shadow
     @Final
@@ -82,13 +79,10 @@ public abstract class ServerLevelMixin extends Level implements WorldGenLevel {
     @Final
     private List<ServerPlayer> players;
 
-    @Unique
-    private static final Object lock = new Object();
-
     @Inject(method = "<init>", at = @At("RETURN"))
     private void init(CallbackInfo ci) {
         navigatingMobs = ConcurrentCollections.newHashSet();
-        async$syncedBlockEventQueue = new ConcurrentLinkedQueue<>();
+        syncedBlockEventQueue = new ConcurrentLinkedQueue<>();
         players = new CopyOnWriteArrayList<>();
     }
 
@@ -96,77 +90,72 @@ public abstract class ServerLevelMixin extends Level implements WorldGenLevel {
     @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/entity/EntityTickList;forEach(Ljava/util/function/Consumer;)V"))
     private void overwriteEntityTicking(EntityTickList entityTickList, Consumer<Entity> consumer) {
         ProfilerFiller profilerfiller = Profiler.get();
+        final boolean asyncDespawn = !AsyncConfig.disabled && AsyncConfig.enableAsyncSpawn;
 
         List<Entity> toTick = new ArrayList<>();
-        List<Entity> toDespawnCheck = new ArrayList<>();
+        List<Entity> despawn = new ArrayList<>();
 
         this.entityTickList.forEach(entity -> {
             if (entity == null || entity.isRemoved()) return;
             if (this.tickRateManager().isEntityFrozen(entity)) return;
 
-            if (!AsyncConfig.disabled && AsyncConfig.enableAsyncSpawn) {
-                toDespawnCheck.add(entity);
-            } else {
+            if (!asyncDespawn) {
                 profilerfiller.push("checkDespawn");
                 entity.checkDespawn();
                 profilerfiller.pop();
             }
 
-            if (!this.chunkSource.chunkMap.getDistanceManager()
-                    .inEntityTickingRange(entity.chunkPosition().toLong())) return;
+            if (!(entity instanceof ServerPlayer)
+                    && !this.chunkSource.chunkMap.getDistanceManager()
+                    .inEntityTickingRange(entity.chunkPosition().toLong())) {
+                if (asyncDespawn) despawn.add(entity);
+                return;
+            }
 
             Entity vehicle = entity.getVehicle();
             if (vehicle != null) {
-                if (!vehicle.isRemoved() && vehicle.hasPassenger(entity)) return;
+                if (!vehicle.isRemoved() && vehicle.hasPassenger(entity)) {
+                    if (asyncDespawn) despawn.add(entity);
+                    return;
+                }
                 entity.stopRiding();
             }
 
             toTick.add(entity);
         });
 
-        if (!toDespawnCheck.isEmpty()) {
-            int chunkSize = Math.max(1, toDespawnCheck.size() / ParallelProcessor.getPoolSize());
-            List<Callable<Void>> despawnTasks = new ArrayList<>();
-            for (int i = 0; i < toDespawnCheck.size(); i += chunkSize) {
-                List<Entity> chunk = toDespawnCheck.subList(i, Math.min(i + chunkSize, toDespawnCheck.size()));
-                despawnTasks.add(() -> {
-                    for (Entity e : chunk) e.checkDespawn();
-                    return null;
-                });
-            }
-            try {
-                ((ThreadPoolExecutor) ParallelProcessor.tickPool).invokeAll(despawnTasks);
-            } catch (InterruptedException ignored) {}
-        }
-
         profilerfiller.push("tick");
-        ParallelProcessor.callEntityTickBatch(this.getLevel(), toTick);
+        if (asyncDespawn) {
+            ParallelProcessor.callEntityTickBatch(this.getLevel(), toTick, despawn);
+        } else {
+            ParallelProcessor.callEntityTickBatch(this.getLevel(), toTick);
+        }
         profilerfiller.pop();
     }
 
     @Redirect(method = "blockEvent", at = @At(value = "INVOKE", target = "Lit/unimi/dsi/fastutil/objects/ObjectLinkedOpenHashSet;add(Ljava/lang/Object;)Z", remap = false))
     private boolean overwriteQueueAdd(ObjectLinkedOpenHashSet<BlockEventData> objectLinkedOpenHashSet, Object object) {
-        return async$syncedBlockEventQueue.add((BlockEventData) object);
+        return syncedBlockEventQueue.add((BlockEventData) object);
     }
 
     @Redirect(method = "clearBlockEvents", at = @At(value = "INVOKE", target = "Lit/unimi/dsi/fastutil/objects/ObjectLinkedOpenHashSet;removeIf(Ljava/util/function/Predicate;)Z", remap = false))
     private boolean overwriteQueueRemoveIf(ObjectLinkedOpenHashSet<BlockEventData> objectLinkedOpenHashSet, Predicate<BlockEventData> filter) {
-        return async$syncedBlockEventQueue.removeIf(filter);
+        return syncedBlockEventQueue.removeIf(filter);
     }
 
     @Redirect(method = "runBlockEvents", at = @At(value = "INVOKE", target = "Lit/unimi/dsi/fastutil/objects/ObjectLinkedOpenHashSet;isEmpty()Z", remap = false))
     private boolean overwriteEmptyCheck(ObjectLinkedOpenHashSet<BlockEventData> objectLinkedOpenHashSet) {
-        return async$syncedBlockEventQueue.isEmpty();
+        return syncedBlockEventQueue.isEmpty();
     }
 
     @Redirect(method = "runBlockEvents", at = @At(value = "INVOKE", target = "Lit/unimi/dsi/fastutil/objects/ObjectLinkedOpenHashSet;removeFirst()Ljava/lang/Object;", remap = false))
     private Object overwriteQueueRemoveFirst(ObjectLinkedOpenHashSet<BlockEventData> objectLinkedOpenHashSet) {
-        return async$syncedBlockEventQueue.poll();
+        return syncedBlockEventQueue.poll();
     }
 
     @Redirect(method = "runBlockEvents", at = @At(value = "INVOKE", target = "Lit/unimi/dsi/fastutil/objects/ObjectLinkedOpenHashSet;addAll(Ljava/util/Collection;)Z", remap = false))
     private boolean overwriteQueueAddAll(ObjectLinkedOpenHashSet<BlockEventData> instance, Collection<? extends BlockEventData> c) {
-        return async$syncedBlockEventQueue.addAll(c);
+        return syncedBlockEventQueue.addAll(c);
     }
 
     @Redirect(method = "sendBlockUpdated", at = @At(value = "FIELD", target = "Lnet/minecraft/server/level/ServerLevel;isUpdatingNavigations:Z", opcode = Opcodes.PUTFIELD))
@@ -174,31 +163,38 @@ public abstract class ServerLevelMixin extends Level implements WorldGenLevel {
     }
 
     @WrapMethod(method = "explode")
-    private void createExplosion(
-            @Nullable Entity source,
-            @Nullable DamageSource damageSource,
-            @Nullable ExplosionDamageCalculator damageCalculator,
-            double x, double y, double z,
-            float radius,
-            boolean fire,
-            Level.ExplosionInteraction explosionInteraction,
-            ParticleOptions smallExplosionParticles,
-            ParticleOptions largeExplosionParticles,
-            WeightedList<ExplosionParticleInfo> particleInfo,
-            Holder<SoundEvent> explosionSound,
+    private void explode(
+            @Nullable final Entity source,
+            @Nullable final DamageSource damageSource,
+            @Nullable final ExplosionDamageCalculator damageCalculator,
+            final double x,
+            final double y,
+            final double z,
+            final float r,
+            final boolean fire,
+            final ExplosionInteraction interactionType,
+            final ParticleOptions smallExplosionParticles,
+            final ParticleOptions largeExplosionParticles,
+            final WeightedList<ExplosionParticleInfo> blockParticles,
+            final Holder<SoundEvent> explosionSound,
             Operation<Void> original
     ) {
-        synchronized (lock) {
+        synchronized (this) {
             original.call(
-                    source, damageSource, damageCalculator,
-                    x, y, z, radius, fire,
-                    explosionInteraction,
+                    source,
+                    damageSource,
+                    damageCalculator,
+                    x,
+                    y,
+                    z,
+                    r,
+                    fire,
+                    interactionType,
                     smallExplosionParticles,
                     largeExplosionParticles,
-                    particleInfo,
+                    blockParticles,
                     explosionSound
             );
         }
     }
-
 }
