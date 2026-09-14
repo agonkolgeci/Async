@@ -1,5 +1,6 @@
 package com.axalotl.async.common.mixin.server;
 
+import com.axalotl.async.common.utils.LastChunkSlot;
 import com.axalotl.async.common.ParallelProcessor;
 import com.axalotl.async.common.config.AsyncConfig;
 import net.minecraft.server.MinecraftServer;
@@ -97,14 +98,6 @@ public abstract class ServerChunkCacheMixin extends ChunkSource {
 
     @Unique
     private static final ThreadLocal<LastChunkSlot> LAST_CHUNK = ThreadLocal.withInitial(LastChunkSlot::new);
-
-    private static final class LastChunkSlot {
-        Object owner;
-        long pos;
-        ChunkStatus status;
-        ChunkAccess chunk;
-        int tick = Integer.MIN_VALUE;
-    }
 
     @Inject(method = "<init>", at = @At("RETURN"))
     private void init(CallbackInfo ci) {

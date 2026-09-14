@@ -13,8 +13,8 @@ import org.spongepowered.asm.mixin.Mixin;
 public class LithiumChunkSectionChangeCallbackMixin {
 
     @WrapMethod(method = "onBlockChange")
-    private synchronized void onBlockChange(BlockListeningSection section, int localX, int localY, int localZ, BlockState oldState, BlockState newState, Operation<Void> original) {
-        original.call(section, localX, localY, localZ, oldState, newState);
+    private synchronized void onBlockChange(BlockListeningSection section, Operation<Void> original) {
+        original.call(section);
     }
 
     @WrapMethod(method = "addTracker")
