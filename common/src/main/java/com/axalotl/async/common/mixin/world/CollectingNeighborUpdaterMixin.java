@@ -3,6 +3,7 @@ package com.axalotl.async.common.mixin.world;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.redstone.CollectingNeighborUpdater;
 import net.minecraft.world.level.redstone.NeighborUpdater;
 import org.spongepowered.asm.mixin.Final;
@@ -18,11 +19,21 @@ public abstract class CollectingNeighborUpdaterMixin implements NeighborUpdater 
 
     @Shadow
     @Final
+    private Level level;
+
+    @Shadow
+    @Final
     @Mutable
     private List<CollectingNeighborUpdater.NeighborUpdates> addedThisLayer = new CopyOnWriteArrayList<>();
 
     @WrapMethod(method = "addAndRun")
-    private synchronized void syncAddAndRun(BlockPos pos, CollectingNeighborUpdater.NeighborUpdates update, Operation<Void> original) {
-        original.call(pos, update);
+    private void syncAddAndRun(BlockPos pos, CollectingNeighborUpdater.NeighborUpdates update, Operation<Void> original) {
+        if (this.level != null) {
+            synchronized (this.level) {
+                original.call(pos, update);
+            }
+        } else {
+            original.call(pos, update);
+        }
     }
 }
